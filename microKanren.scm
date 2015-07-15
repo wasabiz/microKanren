@@ -1,3 +1,10 @@
+(define (assp p alist)
+  (if (null? alist)
+      #f
+      (if (p (caar alist))
+          (car alist)
+          (assp p (cdr alist)))))
+
 ;; Jason Hemann and Dan Friedman
 ;; microKanren, final implementation from paper
 
@@ -11,14 +18,6 @@
 
 (define (ext-s x v s) `((,x . ,v) . ,s))
 
-(define (== u v)
-  (lambda (s/c)
-    (let ((s (unify u v (car s/c))))
-      (if s (unit `(,s . ,(cdr s/c))) mzero))))
-
-(define (unit s/c) (cons s/c mzero))
-(define mzero '())
-
 (define (unify u v s)
   (let ((u (walk u s)) (v (walk v s)))
     (cond
@@ -30,22 +29,33 @@
          (and s (unify (cdr u) (cdr v) s))))
       (else (and (eqv? u v) s)))))
 
+;; Goal constructors
+
 (define (call/fresh f)
   (lambda (s/c)
-    (let ((c (cdr s/c)))
-      ((f (var c)) `(,(car s/c) . ,(+ c 1))))))
+    (let ((s (car s/c)) (c (cdr s/c)))
+      ((f (var c)) `(,s . ,(+ c 1))))))
 
 (define (disj g1 g2) (lambda (s/c) (mplus (g1 s/c) (g2 s/c))))
 (define (conj g1 g2) (lambda (s/c) (bind (g1 s/c) g2)))
 
+(define (== u v)
+  (lambda (s/c)
+    (let ((s (unify u v (car s/c))))
+      (if s (unit `(,s . ,(cdr s/c))) mzero))))
+
+;; KList Monad (similar to List monad, but can have *delayed* state)
+
+(define mzero '())
 (define (mplus $1 $2)
   (cond
     ((null? $1) $2)
     ((procedure? $1) (lambda () (mplus $2 ($1))))
-    (else (cons (car $1) (mplus (cdr $1) $2)))))
+    ((pair? $1) (cons (car $1) (mplus (cdr $1) $2)))))
 
+(define (unit s/c) (list s/c))
 (define (bind $ g)
   (cond
     ((null? $) mzero)
     ((procedure? $) (lambda () (bind ($) g)))
-    (else (mplus (g (car $)) (bind (cdr $) g)))))
+    ((pair? $) (mplus (g (car $)) (bind (cdr $) g)))))
